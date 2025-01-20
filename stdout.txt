@@ -1,0 +1,9 @@
+WARNING - xla_bridge.py - 2025-01-20 17:42:38,430 - No GPU/TPU found, falling back to CPU. (Set TF_CPP_MIN_LOG_LEVEL=0 and rerun for more info.)
+INFO - checkpoints.py - 2025-01-20 17:42:40,023 - Restoring checkpoint from /home/komodo/Documents/uni/thesis/score_sde/checkpoints-meta/checkpoint_11
+INFO - dataset_info.py - 2025-01-20 17:42:40,052 - Load dataset info from /home/komodo/tensorflow_datasets/cifar10/3.0.2
+INFO - dataset_builder.py - 2025-01-20 17:42:40,054 - Reusing dataset cifar10 (/home/komodo/tensorflow_datasets/cifar10/3.0.2)
+INFO - logging_logger.py - 2025-01-20 17:42:40,054 - Constructing tf.data.Dataset cifar10 for split train, from /home/komodo/tensorflow_datasets/cifar10/3.0.2
+INFO - dataset_builder.py - 2025-01-20 17:42:40,241 - Reusing dataset cifar10 (/home/komodo/tensorflow_datasets/cifar10/3.0.2)
+INFO - logging_logger.py - 2025-01-20 17:42:40,241 - Constructing tf.data.Dataset cifar10 for split test, from /home/komodo/tensorflow_datasets/cifar10/3.0.2
+WARNING - xla_bridge.py - 2025-01-20 17:42:40,931 - No GPU/TPU found, falling back to CPU. (Set TF_CPP_MIN_LOG_LEVEL=0 and rerun for more info.)
+INFO - run_lib.py - 2025-01-20 17:42:40,942 - Starting training loop at step 55005.

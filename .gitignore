@@ -17,5 +17,14 @@ dist/
 # Tests
 .pytest_cache/
 
+# Run logs
+tensorboard
+
+# Big checkpoints
+exp
+
+# Datasets
+disk/data
+
 # Other
 *.DS_Store
