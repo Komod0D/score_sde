@@ -34,7 +34,7 @@ import functools
 from flax.metrics import tensorboard
 from flax.training import checkpoints
 # Keep the import below for registering all model definitions
-from models import ddpm, ncsnv2, ncsnpp
+from models import ddpm, ncsnv2, ncsnpp, super_simple
 import losses
 import sampling
 import utils
@@ -62,7 +62,7 @@ def train(config, workdir):
   tf.io.gfile.makedirs(sample_dir)
 
   rng = jax.random.PRNGKey(config.seed)
-  tb_dir = os.path.join(workdir, "tensorboard")
+  tb_dir = os.path.join(workdir, "tensorboard", config.model.name)
   tf.io.gfile.makedirs(tb_dir)
   if jax.host_id() == 0:
     writer = tensorboard.SummaryWriter(tb_dir)

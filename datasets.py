@@ -151,6 +151,16 @@ def get_dataset(config, additional_dim=None, uniform_dequantization=False, evalu
     dataset_builder = tf.data.TFRecordDataset(config.data.tfrecords_path)
     train_split_name = eval_split_name = 'train'
 
+  elif config.data.dataset == 'DISK':
+    resize_op = lambda x: x # Identity resize
+    spec = {'image': tf.TensorSpec(shape=(1, 1, 2), dtype=tf.float32, name=None),
+            'label': tf.TensorSpec(shape=(), dtype=tf.int32, name=None)}
+    dataset_builder = tf.data.experimental.load('disk/data', spec)
+    train_split_name = 'train'
+    eval_split_name = 'test'
+
+    ds_dict = {train_split_name: dataset_builder.skip(1000), eval_split_name: dataset_builder.take(1000)}
+
   else:
     raise NotImplementedError(
       f'Dataset {config.data.dataset} not yet supported.')
@@ -193,6 +203,7 @@ def get_dataset(config, additional_dim=None, uniform_dequantization=False, evalu
       ds = dataset_builder.as_dataset(
         split=split, shuffle_files=True, read_config=read_config)
     else:
+      dataset_builder = ds_dict[split]
       ds = dataset_builder.with_options(dataset_options)
     ds = ds.repeat(count=num_epochs)
     ds = ds.shuffle(shuffle_buffer_size)
