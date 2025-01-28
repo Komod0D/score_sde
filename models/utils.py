@@ -32,7 +32,7 @@ from utils import batch_mul
 @flax.struct.dataclass
 class State:
   step: int
-  optimizer: flax.optim.Optimizer
+  optimizer: flax.optim.Optimizer # TODO: change to optax
   lr: float
   model_state: Any
   ema_rate: float

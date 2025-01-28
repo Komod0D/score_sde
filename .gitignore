@@ -17,8 +17,10 @@ dist/
 # Tests
 .pytest_cache/
 
-# Run logs
+# Runs
 tensorboard
+samples
+
 
 # Big checkpoints
 exp

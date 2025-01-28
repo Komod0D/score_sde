@@ -34,7 +34,7 @@ import functools
 from flax.metrics import tensorboard
 from flax.training import checkpoints
 # Keep the import below for registering all model definitions
-from models import ddpm, ncsnv2, ncsnpp, super_simple
+from models import ddpm, ncsnv2, ncsnpp, super_simple, test_simple
 import losses
 import sampling
 import utils
@@ -62,7 +62,14 @@ def train(config, workdir):
   tf.io.gfile.makedirs(sample_dir)
 
   rng = jax.random.PRNGKey(config.seed)
-  tb_dir = os.path.join(workdir, "tensorboard", config.model.name)
+  
+  run = [config.data.dataset.lower(), config.model.name]
+  if config.training.continuous:
+    run.append('continuous')
+  
+  run_name = '_'.join(run)
+
+  tb_dir = os.path.join(workdir, "tensorboard", run_name)
   tf.io.gfile.makedirs(tb_dir)
   if jax.host_id() == 0:
     writer = tensorboard.SummaryWriter(tb_dir)
@@ -159,10 +166,14 @@ def train(config, workdir):
     # Execute one training step
     (_, pstate), ploss = p_train_step((next_rng, pstate), batch)
     loss = flax.jax_utils.unreplicate(ploss).mean()
+    # state = flax.jax_utils.unreplicate(pstate)
+    # opt = state.optimizer
+    
     # Log to console, file and tensorboard on host 0
     if jax.host_id() == 0 and step % config.training.log_freq == 0:
       logging.info("step: %d, training_loss: %.5e" % (step, loss))
       writer.scalar("training_loss", loss, step)
+      # writer.scalar("loss_gradient_norm", loss, step)
 
     # Save a temporary checkpoint to resume training after pre-emption periodically
     if step != 0 and step % config.training.snapshot_freq_for_preemption == 0 and jax.host_id() == 0:

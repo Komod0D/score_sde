@@ -1,9 +1,13 @@
-WARNING - xla_bridge.py - 2025-01-20 17:42:38,430 - No GPU/TPU found, falling back to CPU. (Set TF_CPP_MIN_LOG_LEVEL=0 and rerun for more info.)
-INFO - checkpoints.py - 2025-01-20 17:42:40,023 - Restoring checkpoint from /home/komodo/Documents/uni/thesis/score_sde/checkpoints-meta/checkpoint_11
-INFO - dataset_info.py - 2025-01-20 17:42:40,052 - Load dataset info from /home/komodo/tensorflow_datasets/cifar10/3.0.2
-INFO - dataset_builder.py - 2025-01-20 17:42:40,054 - Reusing dataset cifar10 (/home/komodo/tensorflow_datasets/cifar10/3.0.2)
-INFO - logging_logger.py - 2025-01-20 17:42:40,054 - Constructing tf.data.Dataset cifar10 for split train, from /home/komodo/tensorflow_datasets/cifar10/3.0.2
-INFO - dataset_builder.py - 2025-01-20 17:42:40,241 - Reusing dataset cifar10 (/home/komodo/tensorflow_datasets/cifar10/3.0.2)
-INFO - logging_logger.py - 2025-01-20 17:42:40,241 - Constructing tf.data.Dataset cifar10 for split test, from /home/komodo/tensorflow_datasets/cifar10/3.0.2
-WARNING - xla_bridge.py - 2025-01-20 17:42:40,931 - No GPU/TPU found, falling back to CPU. (Set TF_CPP_MIN_LOG_LEVEL=0 and rerun for more info.)
-INFO - run_lib.py - 2025-01-20 17:42:40,942 - Starting training loop at step 55005.
+WARNING - xla_bridge.py - 2025-01-28 10:52:06,305 - No GPU/TPU found, falling back to CPU. (Set TF_CPP_MIN_LOG_LEVEL=0 and rerun for more info.)
+INFO - checkpoints.py - 2025-01-28 10:52:29,974 - Found no checkpoint files in /home/komodo/Documents/uni/thesis/score_sde/checkpoints-meta
+INFO - dataset_info.py - 2025-01-28 10:52:29,975 - Load dataset info from /home/komodo/tensorflow_datasets/mnist/3.0.1
+INFO - dataset_info.py - 2025-01-28 10:52:29,977 - Field info.citation from disk and from code do not match. Keeping the one from code.
+INFO - dataset_info.py - 2025-01-28 10:52:29,978 - Field info.splits from disk and from code do not match. Keeping the one from code.
+INFO - dataset_info.py - 2025-01-28 10:52:29,978 - Field info.supervised_keys from disk and from code do not match. Keeping the one from code.
+INFO - dataset_info.py - 2025-01-28 10:52:29,978 - Field info.module_name from disk and from code do not match. Keeping the one from code.
+INFO - dataset_builder.py - 2025-01-28 10:52:29,978 - Reusing dataset mnist (/home/komodo/tensorflow_datasets/mnist/3.0.1)
+INFO - logging_logger.py - 2025-01-28 10:52:29,978 - Constructing tf.data.Dataset mnist for split train, from /home/komodo/tensorflow_datasets/mnist/3.0.1
+INFO - dataset_builder.py - 2025-01-28 10:52:30,143 - Reusing dataset mnist (/home/komodo/tensorflow_datasets/mnist/3.0.1)
+INFO - logging_logger.py - 2025-01-28 10:52:30,143 - Constructing tf.data.Dataset mnist for split test, from /home/komodo/tensorflow_datasets/mnist/3.0.1
+WARNING - xla_bridge.py - 2025-01-28 10:52:30,355 - No GPU/TPU found, falling back to CPU. (Set TF_CPP_MIN_LOG_LEVEL=0 and rerun for more info.)
+INFO - run_lib.py - 2025-01-28 10:52:31,362 - Starting training loop at step 0.

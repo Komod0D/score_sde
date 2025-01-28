@@ -155,11 +155,31 @@ def get_dataset(config, additional_dim=None, uniform_dequantization=False, evalu
     resize_op = lambda x: x # Identity resize
     spec = {'image': tf.TensorSpec(shape=(1, 1, 2), dtype=tf.float32, name=None),
             'label': tf.TensorSpec(shape=(), dtype=tf.int32, name=None)}
-    dataset_builder = tf.data.experimental.load('disk/data', spec)
+    dataset_builder = tf.data.experimental.load('datasets/disk/data', spec)
     train_split_name = 'train'
     eval_split_name = 'test'
 
     ds_dict = {train_split_name: dataset_builder.skip(1000), eval_split_name: dataset_builder.take(1000)}
+
+  elif config.data.dataset == 'SWIRL':
+    resize_op = lambda x: x # Identity resize
+    spec = {'image': tf.TensorSpec(shape=(1, 1, 3), dtype=tf.float32, name=None),
+            'label': tf.TensorSpec(shape=(), dtype=tf.int32, name=None)}
+    dataset_builder = tf.data.experimental.load('datasets/swirl/data', spec)
+    train_split_name = 'train'
+    eval_split_name = 'test'
+
+    ds_dict = {train_split_name: dataset_builder.skip(1000), eval_split_name: dataset_builder.take(1000)}
+
+  elif config.data.dataset == 'MNIST':
+    def resize_op(img):
+      img = tf.image.convert_image_dtype(img, dtype=tf.float32)
+      img = tf.image.pad_to_bounding_box(img, 2, 2, 32, 32)
+      return img
+
+    dataset_builder = tfds.builder('mnist')
+    train_split_name = 'train'
+    eval_split_name = 'test'
 
   else:
     raise NotImplementedError(
