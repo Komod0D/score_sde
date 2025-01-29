@@ -25,6 +25,7 @@ samples
 # Big checkpoints
 exp
 checkpoints-meta
+checkpoints
 
 # Datasets
 disk/data
