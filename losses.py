@@ -17,6 +17,9 @@
 """
 
 import flax
+from flax.training import train_state
+from typing import Any
+import optax
 import jax
 import jax.numpy as jnp
 import jax.random as random
@@ -25,41 +28,30 @@ from sde_lib import VESDE, VPSDE
 from utils import batch_mul
 
 
-def get_optimizer(config):
+class TrainState(train_state.TrainState):
+  mutable_state: Any
+  rng: jax.random.PRNGKey
+
+
+def get_optimizer(config) -> optax.GradientTransformation:
   """Returns a flax optimizer object based on `config`."""
   if config.optim.optimizer == 'Adam':
-    optimizer = flax.optim.Adam(beta1=config.optim.beta1, eps=config.optim.eps,
-                                weight_decay=config.optim.weight_decay)
+    def schedule(step):
+      warmup = config.optim.warmup
+      lr = config.optim.lr
+      if warmup > 0:
+        return - lr * jnp.minimum(step / warmup, 1.0)
+      return - lr
+    
+    optimizer = optax.chain(optax.scale_by_adam(b1=config.optim.beta1, eps=config.optim.eps),
+                            optax.add_decayed_weights(config.optim.weight_decay),
+                            optax.ema(config.model.ema_rate),
+                            optax.scale_by_schedule(schedule))
   else:
     raise NotImplementedError(
       f'Optimizer {config.optim.optimizer} not supported yet!')
 
   return optimizer
-
-
-def optimization_manager(config):
-  """Returns an optimize_fn based on `config`."""
-
-  def optimize_fn(state,
-                  grad,
-                  warmup=config.optim.warmup,
-                  grad_clip=config.optim.grad_clip):
-    """Optimizes with warmup and gradient clipping (disabled if negative)."""
-    lr = state.lr
-    if warmup > 0:
-      lr = lr * jnp.minimum(state.step / warmup, 1.0)
-    if grad_clip >= 0:
-      # Compute global gradient norm
-      grad_norm = jnp.sqrt(
-        sum([jnp.sum(jnp.square(x)) for x in jax.tree_leaves(grad)]))
-      # Clip gradient
-      clipped_grad = jax.tree_map(
-        lambda x: x * grad_clip / jnp.maximum(grad_norm, grad_clip), grad)
-    else:  # disabling gradient clipping if grad_clip < 0
-      clipped_grad = grad
-    return state.optimizer.apply_gradient(clipped_grad, learning_rate=lr)
-
-  return optimize_fn
 
 
 def get_sde_loss_fn(sde, model, train, reduce_mean=True, continuous=True, likelihood_weighting=True, eps=1e-5):
@@ -176,14 +168,13 @@ def get_ddpm_loss_fn(vpsde, model, train, reduce_mean=True):
   return loss_fn
 
 
-def get_step_fn(sde, model, train, optimize_fn=None, reduce_mean=False, continuous=True, likelihood_weighting=False):
+def get_step_fn(sde, model, train, reduce_mean=False, continuous=True, likelihood_weighting=False):
   """Create a one-step training/evaluation function.
 
   Args:
     sde: An `sde_lib.SDE` object that represents the forward SDE.
     model: A `flax.linen.Module` object that represents the architecture of the score-based model.
     train: `True` for training and `False` for evaluation.
-    optimize_fn: An optimization function.
     reduce_mean: If `True`, average the loss across data dimensions. Otherwise sum the loss across data dimensions.
     continuous: `True` indicates that the model is defined to take continuous time steps.
     likelihood_weighting: If `True`, weight the mixture of score matching losses according to
@@ -204,25 +195,27 @@ def get_step_fn(sde, model, train, optimize_fn=None, reduce_mean=False, continuo
     else:
       raise ValueError(f"Discrete training for {sde.__class__.__name__} is not recommended.")
 
-  def step_fn(carry_state, batch):
+  def step_fn(carry_state: tuple[jax.random.PRNGKey, TrainState], batch):
     """Running one step of training or evaluation.
 
     This function will undergo `jax.lax.scan` so that multiple steps can be pmapped and jit-compiled together
     for faster execution.
 
     Args:
-      carry_state: A tuple (JAX random state, `flax.struct.dataclass` containing the training state).
+      carry_state: A tuple (JAX random state, `flax.training.train_state.TrainState` containing the training state).
       batch: A mini-batch of training/evaluation data.
 
     Returns:
       new_carry_state: The updated tuple of `carry_state`.
       loss: The average loss value of this state.
     """
-
+    
     (rng, state) = carry_state
     rng, step_rng = jax.random.split(rng)
     grad_fn = jax.value_and_grad(loss_fn, argnums=1, has_aux=True)
+    
     if train:
+      """
       params = state.optimizer.target
       states = state.model_state
       (loss, new_model_state), grad = grad_fn(step_rng, params, states, batch)
@@ -239,8 +232,17 @@ def get_step_fn(sde, model, train, optimize_fn=None, reduce_mean=False, continuo
         model_state=new_model_state,
         params_ema=new_params_ema
       )
+      """
+      params = state.params
+      mutable = state.mutable_state
+      (loss, new_mutable), grad = grad_fn(step_rng, params, mutable, batch)
+
+      grad = jax.lax.pmean(grad, axis_name='batch')
+      new_state = state.apply_gradients(grads=grad)
+      new_state = new_state.replace(mutable_state=new_mutable)
+    
     else:
-      loss, _ = loss_fn(step_rng, state.params_ema, state.model_state, batch)
+      loss, _ = loss_fn(step_rng, state.params, state.mutable_state, batch)
       new_state = state
 
     loss = jax.lax.pmean(loss, axis_name='batch')

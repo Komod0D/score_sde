@@ -18,6 +18,8 @@
 from typing import Any
 
 import flax
+import flax.typing
+import optax
 import functools
 import jax.numpy as jnp
 import sde_lib
@@ -32,7 +34,7 @@ from utils import batch_mul
 @flax.struct.dataclass
 class State:
   step: int
-  optimizer: flax.optim.Optimizer # TODO: change to optax
+  optimizer: optax.OptState # flax.optim.Optimizer # TODO: change to optax
   lr: float
   model_state: Any
   ema_rate: float
@@ -106,7 +108,7 @@ def get_ddpm_params(config):
   }
 
 
-def init_model(rng, config):
+def init_model(rng, config) -> tuple[flax.linen.Module, flax.typing.FrozenVariableDict]:
   """ Initialize a `flax.linen.Module` model. """
   model_name = config.model.name
   model_def = functools.partial(get_model(model_name), config=config)
@@ -115,11 +117,13 @@ def init_model(rng, config):
   fake_input = jnp.zeros(input_shape)
   fake_label = jnp.zeros(label_shape, dtype=jnp.int32)
   params_rng, dropout_rng = jax.random.split(rng)
-  model = model_def()
-  variables = model.init({'params': params_rng, 'dropout': dropout_rng}, fake_input, fake_label)
+  model: flax.linen.Module = model_def()
+  variables = model.init({'params': params_rng, 'dropout': dropout_rng},
+                                                         fake_input, fake_label, train=False)
+  variables = flax.typing.FrozenVariableDict(variables)
   # Variables is a `flax.FrozenDict`. It is immutable and respects functional programming
-  init_model_state, initial_params = variables.pop('params')
-  return model, init_model_state, initial_params
+  initial_state, initial_params = variables.pop('params')
+  return model, dict(initial_state), initial_params
 
 
 def get_model_fn(model, params, states, train=False):

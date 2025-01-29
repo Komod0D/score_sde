@@ -56,7 +56,7 @@ def get_config():
   model.resblock_type = 'biggan'
   model.progressive = 'none'
   model.progressive_input = 'none'
-  model.progressive_combine = 'sum'
+  model.progressive_combine = 'cat'
   model.attention_type = 'ddpm'
   model.init_scale = 0.
   model.embedding_type = 'positional'

@@ -24,17 +24,19 @@ from typing import Any
 
 import flax
 import flax.jax_utils as flax_utils
+from losses import TrainState
+
 import jax
 import jax.numpy as jnp
 import numpy as np
 import tensorflow as tf
-import tensorflow_gan as tfgan
+# import tensorflow_gan as tfgan
 import logging
 import functools
 from flax.metrics import tensorboard
 from flax.training import checkpoints
 # Keep the import below for registering all model definitions
-from models import ddpm, ncsnv2, ncsnpp, super_simple, test_simple
+from models import ddpm, ncsnv2, ncsnpp, super_simple, super_simple_conv
 import losses
 import sampling
 import utils
@@ -71,19 +73,17 @@ def train(config, workdir):
 
   tb_dir = os.path.join(workdir, "tensorboard", run_name)
   tf.io.gfile.makedirs(tb_dir)
-  if jax.host_id() == 0:
+  if jax.process_index() == 0:
     writer = tensorboard.SummaryWriter(tb_dir)
 
   # Initialize model.
   rng, step_rng = jax.random.split(rng)
-  score_model, init_model_state, initial_params = mutils.init_model(step_rng, config)
-  optimizer = losses.get_optimizer(config).create(initial_params)
-  state = mutils.State(step=0, optimizer=optimizer, lr=config.optim.lr,
-                       model_state=init_model_state,
-                       ema_rate=config.model.ema_rate,
-                       params_ema=initial_params,
-                       rng=rng)  # pytype: disable=wrong-keyword-args
+  score_model, initial_state, initial_params = mutils.init_model(step_rng, config)
 
+  optimizer = losses.get_optimizer(config)
+  state = TrainState.create(apply_fn=score_model.apply, params=initial_params, tx=optimizer,
+                            mutable_state=initial_state, rng=rng)
+  
   # Create checkpoints directory
   checkpoint_dir = os.path.join(workdir, "checkpoints")
   # Intermediate checkpoints to resume training after pre-emption in cloud environments
@@ -91,7 +91,7 @@ def train(config, workdir):
   tf.io.gfile.makedirs(checkpoint_dir)
   tf.io.gfile.makedirs(checkpoint_meta_dir)
   # Resume training when intermediate checkpoints are detected
-  state = checkpoints.restore_checkpoint(checkpoint_meta_dir, state)
+  state: TrainState = checkpoints.restore_checkpoint(checkpoint_meta_dir, state)
   # `state.step` is JAX integer on the GPU/TPU devices
   initial_step = int(state.step)
   rng = state.rng
@@ -120,16 +120,15 @@ def train(config, workdir):
     raise NotImplementedError(f"SDE {config.training.sde} unknown.")
 
   # Build one-step training and evaluation functions
-  optimize_fn = losses.optimization_manager(config)
   continuous = config.training.continuous
   reduce_mean = config.training.reduce_mean
   likelihood_weighting = config.training.likelihood_weighting
-  train_step_fn = losses.get_step_fn(sde, score_model, train=True, optimize_fn=optimize_fn,
+  train_step_fn = losses.get_step_fn(sde, score_model, train=True,
                                      reduce_mean=reduce_mean, continuous=continuous,
                                      likelihood_weighting=likelihood_weighting)
   # Pmap (and jit-compile) multiple training steps together for faster running
   p_train_step = jax.pmap(functools.partial(jax.lax.scan, train_step_fn), axis_name='batch', donate_argnums=1)
-  eval_step_fn = losses.get_step_fn(sde, score_model, train=False, optimize_fn=optimize_fn,
+  eval_step_fn = losses.get_step_fn(sde, score_model, train=False,
                                     reduce_mean=reduce_mean, continuous=continuous,
                                     likelihood_weighting=likelihood_weighting)
   # Pmap (and jit-compile) multiple evaluation steps together for faster running
@@ -146,9 +145,9 @@ def train(config, workdir):
   num_train_steps = config.training.n_iters
 
   # In case there are multiple hosts (e.g., TPU pods), only log to host 0
-  if jax.host_id() == 0:
+  if jax.process_index() == 0:
     logging.info("Starting training loop at step %d." % (initial_step,))
-  rng = jax.random.fold_in(rng, jax.host_id())
+  rng = jax.random.fold_in(rng, jax.process_index())
 
   # JIT multiple training steps together for faster training
   n_jitted_steps = config.training.n_jitted_steps
@@ -170,13 +169,13 @@ def train(config, workdir):
     # opt = state.optimizer
     
     # Log to console, file and tensorboard on host 0
-    if jax.host_id() == 0 and step % config.training.log_freq == 0:
+    if jax.process_index() == 0 and step % config.training.log_freq == 0:
       logging.info("step: %d, training_loss: %.5e" % (step, loss))
       writer.scalar("training_loss", loss, step)
       # writer.scalar("loss_gradient_norm", loss, step)
 
     # Save a temporary checkpoint to resume training after pre-emption periodically
-    if step != 0 and step % config.training.snapshot_freq_for_preemption == 0 and jax.host_id() == 0:
+    if step != 0 and step % config.training.snapshot_freq_for_preemption == 0 and jax.process_index() == 0:
       saved_state = flax_utils.unreplicate(pstate)
       saved_state = saved_state.replace(rng=rng)
       checkpoints.save_checkpoint(checkpoint_meta_dir, saved_state,
@@ -190,14 +189,14 @@ def train(config, workdir):
       next_rng = jnp.asarray(next_rng)
       (_, _), peval_loss = p_eval_step((next_rng, pstate), eval_batch)
       eval_loss = flax.jax_utils.unreplicate(peval_loss).mean()
-      if jax.host_id() == 0:
+      if jax.process_index() == 0:
         logging.info("step: %d, eval_loss: %.5e" % (step, eval_loss))
         writer.scalar("eval_loss", eval_loss, step)
 
     # Save a checkpoint periodically and generate samples if needed
     if step != 0 and step % config.training.snapshot_freq == 0 or step == num_train_steps:
       # Save the checkpoint.
-      if jax.host_id() == 0:
+      if jax.process_index() == 0:
         saved_state = flax_utils.unreplicate(pstate)
         saved_state = saved_state.replace(rng=rng)
         checkpoints.save_checkpoint(checkpoint_dir, saved_state,
@@ -210,7 +209,7 @@ def train(config, workdir):
         sample_rng = jnp.asarray(sample_rng)
         sample, n = sampling_fn(sample_rng, pstate)
         this_sample_dir = os.path.join(
-          sample_dir, "iter_{}_host_{}".format(step, jax.host_id()))
+          sample_dir, "iter_{}_host_{}".format(step, jax.process_index()))
         tf.io.gfile.makedirs(this_sample_dir)
         image_grid = sample.reshape((-1, *sample.shape[2:]))
         nrow = int(np.sqrt(image_grid.shape[0]))
@@ -254,12 +253,9 @@ def evaluate(config,
   # Initialize model
   rng, model_rng = jax.random.split(rng)
   score_model, init_model_state, initial_params = mutils.init_model(model_rng, config)
-  optimizer = losses.get_optimizer(config).create(initial_params)
-  state = mutils.State(step=0, optimizer=optimizer, lr=config.optim.lr,
-                       model_state=init_model_state,
-                       ema_rate=config.model.ema_rate,
-                       params_ema=initial_params,
-                       rng=rng)  # pytype: disable=wrong-keyword-args
+  
+  optimizer = losses.get_optimizer(config)
+  state = TrainState.create(apply_fn=score_model.apply, params=initial_params, tx=optimizer)
 
   checkpoint_dir = os.path.join(workdir, "checkpoints")
 
@@ -316,7 +312,7 @@ def evaluate(config,
     sampling_fn = sampling.get_sampling_fn(config, sde, score_model, sampling_shape, inverse_scaler, sampling_eps)
 
   # Create different random states for different hosts in a multi-host environment (e.g., TPU pods)
-  rng = jax.random.fold_in(rng, jax.host_id())
+  rng = jax.random.fold_in(rng, jax.process_index())
 
   # A data class for storing intermediate results to resume evaluation after pre-emption
   @flax.struct.dataclass
@@ -333,7 +329,7 @@ def evaluate(config,
   # Restore evaluation after pre-emption
   eval_meta = EvalMeta(ckpt_id=config.eval.begin_ckpt, sampling_round_id=-1, bpd_round_id=-1, rng=rng)
   eval_meta = checkpoints.restore_checkpoint(
-    eval_dir, eval_meta, step=None, prefix=f"meta_{jax.host_id()}_")
+    eval_dir, eval_meta, step=None, prefix=f"meta_{jax.process_index()}_")
 
   if eval_meta.bpd_round_id < num_bpd_rounds - 1:
     begin_ckpt = eval_meta.ckpt_id
@@ -362,7 +358,7 @@ def evaluate(config,
     waiting_message_printed = False
     ckpt_filename = os.path.join(checkpoint_dir, "checkpoint_{}".format(ckpt))
     while not tf.io.gfile.exists(ckpt_filename):
-      if not waiting_message_printed and jax.host_id() == 0:
+      if not waiting_message_printed and jax.process_index() == 0:
         logging.warning("Waiting for the arrival of checkpoint_%d" % (ckpt,))
         waiting_message_printed = True
       time.sleep(60)
@@ -391,7 +387,7 @@ def evaluate(config,
         (_, _), p_eval_loss = p_eval_step((next_rng, pstate), eval_batch)
         eval_loss = flax.jax_utils.unreplicate(p_eval_loss)
         all_losses.extend(eval_loss)
-        if (i + 1) % 1000 == 0 and jax.host_id() == 0:
+        if (i + 1) % 1000 == 0 and jax.process_index() == 0:
           logging.info("Finished %dth step loss evaluation" % (i + 1))
 
       # Save loss values to disk or Google Cloud Storage
@@ -437,7 +433,7 @@ def evaluate(config,
             eval_meta,
             step=ckpt * (num_sampling_rounds + num_bpd_rounds) + bpd_round_id,
             keep=1,
-            prefix=f"meta_{jax.host_id()}_")
+            prefix=f"meta_{jax.process_index()}_")
     else:
       # Skip likelihood computation and save intermediate states for pre-emption
       eval_meta = eval_meta.replace(ckpt_id=ckpt, bpd_round_id=num_bpd_rounds - 1)
@@ -446,7 +442,7 @@ def evaluate(config,
         eval_meta,
         step=ckpt * (num_sampling_rounds + num_bpd_rounds) + num_bpd_rounds - 1,
         keep=1,
-        prefix=f"meta_{jax.host_id()}_")
+        prefix=f"meta_{jax.process_index()}_")
 
     # Generate samples and compute IS/FID/KID when enabled
     if config.eval.enable_sampling:
@@ -454,12 +450,12 @@ def evaluate(config,
       # Run sample generation for multiple rounds to create enough samples
       # Designed to be pre-emption safe. Automatically resumes when interrupted
       for r in range(begin_sampling_round, num_sampling_rounds):
-        if jax.host_id() == 0:
+        if jax.process_index() == 0:
           logging.info("sampling -- ckpt: %d, round: %d" % (ckpt, r))
 
         # Directory to save samples. Different for each host to avoid writing conflicts
         this_sample_dir = os.path.join(
-          eval_dir, f"ckpt_{ckpt}_host_{jax.host_id()}")
+          eval_dir, f"ckpt_{ckpt}_host_{jax.process_index()}")
         tf.io.gfile.makedirs(this_sample_dir)
 
         rng, *sample_rng = jax.random.split(rng, jax.local_device_count() + 1)
@@ -477,17 +473,20 @@ def evaluate(config,
 
         # Force garbage collection before calling TensorFlow code for Inception network
         gc.collect()
-        latents = evaluation.run_inception_distributed(samples, inception_model,
-                                                       inceptionv3=inceptionv3)
+        # TODO fix FID SCORE
+        # latents = evaluation.run_inception_distributed(samples, inception_model, inceptionv3=inceptionv3)
         # Force garbage collection again before returning to JAX code
         gc.collect()
         # Save latent represents of the Inception network to disk or Google Cloud Storage
+        """
         with tf.io.gfile.GFile(
             os.path.join(this_sample_dir, f"statistics_{r}.npz"), "wb") as fout:
           io_buffer = io.BytesIO()
           np.savez_compressed(
             io_buffer, pool_3=latents["pool_3"], logits=latents["logits"])
           fout.write(io_buffer.getvalue())
+
+        """
 
         # Update the intermediate evaluation state
         eval_meta = eval_meta.replace(ckpt_id=ckpt, sampling_round_id=r, rng=rng)
@@ -499,10 +498,10 @@ def evaluate(config,
             eval_meta,
             step=ckpt * (num_sampling_rounds + num_bpd_rounds) + r + num_bpd_rounds,
             keep=1,
-            prefix=f"meta_{jax.host_id()}_")
+            prefix=f"meta_{jax.process_index()}_")
 
-      # Compute inception scores, FIDs and KIDs.
-      if jax.host_id() == 0:
+      # Compute inception scores, FIDs and KIDs. 
+      if jax.process_index() == 0: 
         # Load all statistics that have been previously computed and saved for each host
         all_logits = []
         all_pools = []
@@ -536,18 +535,19 @@ def evaluate(config,
         data_pools = data_stats["pool_3"]
 
         # Compute FID/KID/IS on all samples together.
-        if not inceptionv3:
+        if not inceptionv3 and False: # TODO: CHANGE TO python3.11 compatible code (remove False)
           inception_score = tfgan.eval.classifier_score_from_logits(all_logits)
         else:
           inception_score = -1
 
-        fid = tfgan.eval.frechet_classifier_distance_from_activations(
-          data_pools, all_pools)
+        fid = -1  #TODO: CHANGE TO python3.11 compatible code
+        # fid = tfgan.eval.frechet_classifier_distance_from_activations(data_pools, all_pools) 
         # Hack to get tfgan KID work for eager execution.
         tf_data_pools = tf.convert_to_tensor(data_pools)
         tf_all_pools = tf.convert_to_tensor(all_pools)
-        kid = tfgan.eval.kernel_classifier_distance_from_activations(
-          tf_data_pools, tf_all_pools).numpy()
+
+        kid = -1 #TODO: CHANGE TO python3.11 compatible code
+        #kid = tfgan.eval.kernel_classifier_distance_from_activations(tf_data_pools, tf_all_pools).numpy()
         del tf_data_pools, tf_all_pools
 
         logging.info(
@@ -571,7 +571,7 @@ def evaluate(config,
         eval_meta,
         step=ckpt * (num_sampling_rounds + num_bpd_rounds) + r + num_bpd_rounds,
         keep=1,
-        prefix=f"meta_{jax.host_id()}_")
+        prefix=f"meta_{jax.process_index()}_")
 
     else:
       # Skip sampling and save intermediate evaluation states for pre-emption
@@ -581,13 +581,13 @@ def evaluate(config,
         eval_meta,
         step=ckpt * (num_sampling_rounds + num_bpd_rounds) + num_sampling_rounds - 1 + num_bpd_rounds,
         keep=1,
-        prefix=f"meta_{jax.host_id()}_")
+        prefix=f"meta_{jax.process_index()}_")
 
     begin_bpd_round = 0
     begin_sampling_round = 0
 
   # Remove all meta files after finishing evaluation
   meta_files = tf.io.gfile.glob(
-    os.path.join(eval_dir, f"meta_{jax.host_id()}_*"))
+    os.path.join(eval_dir, f"meta_{jax.process_index()}_*"))
   for file in meta_files:
     tf.io.gfile.remove(file)

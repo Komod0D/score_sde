@@ -52,7 +52,7 @@ def get_default_configs():
   model.sigma_max = 10
   model.num_scales = 100
   model.beta_min = 0.1
-  model.beta_max = 20.
+  model.beta_max = 1.
   model.dropout = 0.1
   model.embedding_type = 'fourier'
 
