@@ -16,7 +16,6 @@
 """All functions related to loss computation and optimization.
 """
 
-import flax
 from flax.training import train_state
 from typing import Any
 import optax

@@ -30,6 +30,7 @@ import sde_lib
 from utils import batch_mul, batch_add
 
 from models import utils as mutils
+from losses import TrainState
 
 _CORRECTORS = {}
 _PREDICTORS = {}
@@ -349,9 +350,9 @@ class NoneCorrector(Corrector):
     return x, x
 
 
-def shared_predictor_update_fn(rng, state, x, t, sde, model, predictor, probability_flow, continuous):
+def shared_predictor_update_fn(rng, state: TrainState, x, t, sde, model, predictor, probability_flow, continuous):
   """A wrapper that configures and returns the update function of predictors."""
-  score_fn = mutils.get_score_fn(sde, model, state.params_ema, state.model_state, train=False, continuous=continuous)
+  score_fn = mutils.get_score_fn(sde, model, state.params, state.mutable_state, train=False, continuous=continuous)
   if predictor is None:
     # Corrector-only sampler
     predictor_obj = NonePredictor(sde, score_fn, probability_flow)
@@ -360,9 +361,9 @@ def shared_predictor_update_fn(rng, state, x, t, sde, model, predictor, probabil
   return predictor_obj.update_fn(rng, x, t)
 
 
-def shared_corrector_update_fn(rng, state, x, t, sde, model, corrector, continuous, snr, n_steps):
+def shared_corrector_update_fn(rng, state: TrainState, x, t, sde, model, corrector, continuous, snr, n_steps):
   """A wrapper tha configures and returns the update function of correctors."""
-  score_fn = mutils.get_score_fn(sde, model, state.params_ema, state.model_state, train=False, continuous=continuous)
+  score_fn = mutils.get_score_fn(sde, model, state.params, state.mutable_state, train=False, continuous=continuous)
   if corrector is None:
     # Predictor-only sampler
     corrector_obj = NoneCorrector(sde, score_fn, snr, n_steps)
