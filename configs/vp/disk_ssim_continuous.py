@@ -21,6 +21,7 @@ from configs.default_disk_configs import get_default_configs
 
 def get_config():
   config = get_default_configs()
+  config.seed = 42
   # training
   training = config.training
   training.sde = 'vpsde'

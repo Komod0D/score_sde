@@ -14,12 +14,16 @@ _pycache__/
 build/
 dist/
 
+# Cluster Environment
+venv
+
 # Tests
 .pytest_cache/
 
 # Runs
 tensorboard
 samples
+stdout.txt
 
 
 # Big checkpoints
