@@ -20,7 +20,7 @@ dist/
 # Runs
 tensorboard
 samples
-
+checkpoints-meta
 
 # Big checkpoints
 exp
