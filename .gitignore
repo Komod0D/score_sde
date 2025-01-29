@@ -21,6 +21,7 @@ dist/
 tensorboard
 samples
 checkpoints-meta
+checkpoints
 
 # Big checkpoints
 exp
