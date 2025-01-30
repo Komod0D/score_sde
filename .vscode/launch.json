@@ -9,7 +9,7 @@
             "type": "debugpy",
             "request": "launch",
             "program": "${file}",
-            "args": ["--config=configs/vp/disk_ssim_continuous.py", "--workdir=/home/komodo/Documents/uni/thesis/score_sde",
+            "args": ["--config=configs/vp/swirl_ssim_continuous.py", "--workdir=/home/komodo/Documents/uni/thesis/score_sde",
         "--mode=train"]
         }
     ]

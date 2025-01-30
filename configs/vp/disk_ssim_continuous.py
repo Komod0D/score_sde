@@ -42,7 +42,7 @@ def get_config():
   model = config.model
   model.name = 'ssim'
   model.scale_by_sigma = False
-  model.ema_rate = 0.9999
+  model.ema_rate = 0.0001
   model.normalization = 'GroupNorm'
   model.nonlinearity = 'relu'
   model.nf = 32

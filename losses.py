@@ -35,17 +35,14 @@ class TrainState(train_state.TrainState):
 def get_optimizer(config) -> optax.GradientTransformation:
   """Returns a flax optimizer object based on `config`."""
   if config.optim.optimizer == 'Adam':
-    def schedule(step):
-      warmup = config.optim.warmup
-      lr = config.optim.lr
-      if warmup > 0:
-        return - lr * jnp.minimum(step / warmup, 1.0)
-      return - lr
     
-    optimizer = optax.chain(optax.scale_by_adam(b1=config.optim.beta1, eps=config.optim.eps),
-                            optax.add_decayed_weights(config.optim.weight_decay),
-                            optax.ema(config.model.ema_rate),
-                            optax.scale_by_schedule(schedule))
+    lr = config.optim.lr
+    schedule = optax.warmup_exponential_decay_schedule(0., lr, config.optim.warmup, 1, 1.)
+    
+    optimizer = optax.chain(optax.clip_by_global_norm(config.optim.grad_clip),
+                            optax.adamw(schedule, b1=config.optim.beta1, eps=config.optim.eps,
+                                        weight_decay=config.optim.weight_decay),
+                            optax.ema(0.))
   else:
     raise NotImplementedError(
       f'Optimizer {config.optim.optimizer} not supported yet!')
