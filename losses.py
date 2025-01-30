@@ -42,7 +42,7 @@ def get_optimizer(config) -> optax.GradientTransformation:
     optimizer = optax.chain(optax.clip_by_global_norm(config.optim.grad_clip),
                             optax.adamw(schedule, b1=config.optim.beta1, eps=config.optim.eps,
                                         weight_decay=config.optim.weight_decay),
-                            optax.ema(0.))
+                            optax.ema(config.model.ema_rate))
   else:
     raise NotImplementedError(
       f'Optimizer {config.optim.optimizer} not supported yet!')
