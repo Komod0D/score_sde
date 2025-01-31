@@ -21,7 +21,6 @@ from configs.default_disk_configs import get_default_configs
 
 def get_config():
   config = get_default_configs()
-  config.seed = 42
   # training
   training = config.training
   training.sde = 'vpsde'
@@ -36,7 +35,7 @@ def get_config():
 
   # data
   data = config.data
-  data.centered = True
+  data.centered = False
 
   # model
   model = config.model
