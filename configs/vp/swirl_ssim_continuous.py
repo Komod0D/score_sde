@@ -35,7 +35,7 @@ def get_config():
 
   # data
   data = config.data
-  data.centered = True
+  data.centered = False
 
   # model
   model = config.model
