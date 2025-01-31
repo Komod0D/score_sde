@@ -155,7 +155,7 @@ def get_dataset(config, additional_dim=None, uniform_dequantization=False, evalu
     resize_op = lambda x: x # Identity resize
     spec = {'image': tf.TensorSpec(shape=(1, 1, 2), dtype=tf.float32, name=None),
             'label': tf.TensorSpec(shape=(), dtype=tf.int32, name=None)}
-    dataset_builder = tf.data.experimental.load('datasets/disk/data', spec)
+    dataset_builder = tf.data.Dataset.load('datasets/disk/data', spec)
     train_split_name = 'train'
     eval_split_name = 'test'
 
@@ -165,7 +165,7 @@ def get_dataset(config, additional_dim=None, uniform_dequantization=False, evalu
     resize_op = lambda x: x # Identity resize
     spec = {'image': tf.TensorSpec(shape=(1, 1, 3), dtype=tf.float32, name=None),
             'label': tf.TensorSpec(shape=(), dtype=tf.int32, name=None)}
-    dataset_builder = tf.data.experimental.load('datasets/swirl/data', spec)
+    dataset_builder = tf.data.Dataset.load('datasets/swirl/data', spec)
     train_split_name = 'train'
     eval_split_name = 'test'
 
@@ -215,8 +215,8 @@ def get_dataset(config, additional_dim=None, uniform_dequantization=False, evalu
   def create_dataset(dataset_builder, split):
     dataset_options = tf.data.Options()
     dataset_options.experimental_optimization.map_parallelization = True
-    dataset_options.experimental_threading.private_threadpool_size = 48
-    dataset_options.experimental_threading.max_intra_op_parallelism = 1
+    dataset_options.threading.private_threadpool_size = 48
+    dataset_options.threading.max_intra_op_parallelism = 1
     read_config = tfds.ReadConfig(options=dataset_options)
     if isinstance(dataset_builder, tfds.core.DatasetBuilder):
       dataset_builder.download_and_prepare()
