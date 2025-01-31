@@ -24,7 +24,7 @@ venv
 tensorboard
 samples
 stdout.txt
-
+.vscode
 
 # Big checkpoints
 exp
