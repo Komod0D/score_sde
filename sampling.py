@@ -409,7 +409,7 @@ def get_pc_sampler(sde, model, shape, predictor, corrector, inverse_scaler, snr,
                                           continuous=continuous,
                                           snr=snr,
                                           n_steps=n_steps)
-  def pc_sampler(rng, state):
+  def pc_sampler(rng, state, N=sde.N):
     """ The PC sampler funciton.
 
     Args:
@@ -422,6 +422,7 @@ def get_pc_sampler(sde, model, shape, predictor, corrector, inverse_scaler, snr,
     rng, step_rng = random.split(rng)
     x = sde.prior_sampling(step_rng, shape)
     timesteps = jnp.linspace(sde.T, eps, sde.N)
+    N = jnp.minimum(N, sde.N)
 
     def loop_body(i, val):
       rng, x, x_mean = val
@@ -433,9 +434,9 @@ def get_pc_sampler(sde, model, shape, predictor, corrector, inverse_scaler, snr,
       x, x_mean = predictor_update_fn(step_rng, state, x, vec_t)
       return rng, x, x_mean
 
-    _, x, x_mean = jax.lax.fori_loop(0, sde.N, loop_body, (rng, x, x))
+    _, x, x_mean = jax.lax.fori_loop(0, N, loop_body, (rng, x, x))
     # Denoising is equivalent to running one predictor step without adding noise.
-    return inverse_scaler(x_mean if denoise else x), sde.N * (n_steps + 1)
+    return inverse_scaler(x_mean if denoise else x), N * (n_steps + 1)
 
   return jax.pmap(pc_sampler, axis_name='batch')
 

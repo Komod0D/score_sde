@@ -6,7 +6,7 @@ def get_default_configs():
   # training
   config.training = training = ml_collections.ConfigDict()
   config.training.batch_size = 128
-  training.n_iters = 100000
+  training.n_iters = 1000000
   training.snapshot_freq = 50000
   training.log_freq = 50
   training.eval_freq = 100
@@ -49,10 +49,10 @@ def get_default_configs():
   # model
   config.model = model = ml_collections.ConfigDict()
   model.sigma_min = 0.01
-  model.sigma_max = 10
-  model.num_scales = 100
+  model.sigma_max = 20.
+  model.num_scales = 200
   model.beta_min = 0.1
-  model.beta_max = 20.
+  model.beta_max = 40.
   model.dropout = 0.1
   model.embedding_type = 'fourier'
 
