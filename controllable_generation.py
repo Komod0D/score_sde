@@ -5,6 +5,7 @@ import jax.random as random
 from sampling import NoneCorrector, NonePredictor, shared_corrector_update_fn, shared_predictor_update_fn
 import functools
 from utils import batch_mul
+from losses import TrainState
 
 
 def get_pc_inpainter(sde, model, predictor, corrector, inverse_scaler, snr,
@@ -207,7 +208,7 @@ def get_pc_colorizer(sde, model, predictor, corrector, inverse_scaler,
 
   return jax.pmap(pc_colorizer, axis_name='batch')
 
-
+# TODO: MAKE INCREMENTAL LIKE BEFORE, EASY :)
 def get_pc_conditional_sampler(sde, score_model, classifier, classifier_params, shape,
                                predictor, corrector, inverse_scaler, snr,
                                n_steps=1, probability_flow=False,
@@ -237,9 +238,9 @@ def get_pc_conditional_sampler(sde, score_model, classifier, classifier_params, 
   # The gradient function of the noise-dependent classifier
   classifier_grad_fn = mutils.get_classifier_grad_fn(logit_fn)
 
-  def conditional_predictor_update_fn(rng, state, x, t, labels):
+  def conditional_predictor_update_fn(rng, state: TrainState, x, t, labels):
     """The predictor update function for class-conditional sampling."""
-    score_fn = mutils.get_score_fn(sde, score_model, state.params_ema, state.model_state, train=False,
+    score_fn = mutils.get_score_fn(sde, score_model, state.params, state.mutable_state, train=False,
                                    continuous=continuous)
 
     def total_grad_fn(x, t):
@@ -259,7 +260,7 @@ def get_pc_conditional_sampler(sde, score_model, classifier, classifier_params, 
 
     def total_grad_fn(x, t):
       ve_noise_scale = sde.marginal_prob(x, t)[1]
-      return score_fn(x, t) + classifier_grad_fn(x, ve_noise_scale, labels)
+      return score_fn(x, t) + classifier_grad_fn(x, ve_noise_scale, labels) # TODO CHANGE TO + OR - 
 
     if corrector is None:
       corrector_obj = NoneCorrector(sde, total_grad_fn, snr, n_steps)

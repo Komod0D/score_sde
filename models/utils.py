@@ -262,13 +262,15 @@ def create_classifier(prng_key, batch_size, ckpt_path):
   return classifier, classifier_params
 
 
-def get_logit_fn(classifier, classifier_params):
+def get_logit_fn(classifier, classifier_params, preprocess_fn=None):
   """ Create a logit function for the classifier. """
 
   def preprocess(data):
     image_mean = jnp.asarray([[[0.49139968, 0.48215841, 0.44653091]]])
     image_std = jnp.asarray([[[0.24703223, 0.24348513, 0.26158784]]])
     return (data - image_mean[None, ...]) / image_std[None, ...]
+  
+  preprocess_fn = preprocess if preprocess_fn is None else preprocess_fn
 
   def logit_fn(data, ve_noise_scale):
     """Give the logits of the classifier.

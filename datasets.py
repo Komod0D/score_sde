@@ -155,7 +155,11 @@ def get_dataset(config, additional_dim=None, uniform_dequantization=False, evalu
     resize_op = lambda x: x # Identity resize
     spec = {'image': tf.TensorSpec(shape=(1, 1, 2), dtype=tf.float32, name=None),
             'label': tf.TensorSpec(shape=(), dtype=tf.int32, name=None)}
-    dataset_builder = tf.data.Dataset.load('datasets/disk/data', spec)
+    
+    if config.data.subset:
+      dataset_builder = tf.data.Dataset.load('datasets/disk/data_filtered', spec)
+    else:
+      dataset_builder = tf.data.Dataset.load('datasets/disk/data', spec)
     train_split_name = 'train'
     eval_split_name = 'test'
 
