@@ -163,6 +163,8 @@ def get_dataset(config, additional_dim=None, uniform_dequantization=False, evalu
 
   elif config.data.dataset == 'SWIRL':
     resize_op = lambda x: x # Identity resize
+    if config.data.num_channels == 2:
+      resize_op = lambda x: tf.gather(x, [0, 2], axis=-1)
     spec = {'image': tf.TensorSpec(shape=(1, 1, 3), dtype=tf.float32, name=None),
             'label': tf.TensorSpec(shape=(), dtype=tf.int32, name=None)}
     dataset_builder = tf.data.Dataset.load('datasets/swirl/data', spec)

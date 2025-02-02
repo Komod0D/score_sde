@@ -14,9 +14,9 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Training SuperSimple on DISK with continuous sigmas."""
+"""Training SuperSimple on Swiss Roll with continuous sigmas."""
 
-from configs.default_disk_configs import get_default_configs
+from configs.default_swirl_configs import get_default_configs
 
 
 def get_config():
@@ -30,23 +30,24 @@ def get_config():
   # sampling
   sampling = config.sampling
   sampling.method = 'pc'
-  sampling.predictor = 'euler_maruyama'
+  sampling.predictor = 'reverse_diffusion'
   sampling.corrector = 'none'
 
   # data
   data = config.data
-  data.centered = True
+  data.centered = False
+  data.num_channels = 2
 
   # model
   model = config.model
   model.name = 'ssim'
   model.scale_by_sigma = False
-  model.ema_rate = 0.9999
+  model.ema_rate = 0.0001
   model.normalization = 'GroupNorm'
-  model.nonlinearity = 'swish'
+  model.nonlinearity = 'relu'
   model.nf = 32
   model.ch_mult = (1, 2, 2, 2)
-  model.num_res_blocks = 6
+  model.num_res_blocks = 0
   model.attn_resolutions = (16,)
   model.resamp_with_conv = True
   model.conditional = True
