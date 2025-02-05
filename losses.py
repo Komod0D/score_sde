@@ -22,6 +22,7 @@ import optax
 import jax
 import jax.numpy as jnp
 import jax.random as random
+from optax.losses import sigmoid_binary_cross_entropy
 from models import utils as mutils
 from sde_lib import VESDE, VPSDE
 from utils import batch_mul
@@ -50,7 +51,8 @@ def get_optimizer(config) -> optax.GradientTransformation:
   return optimizer
 
 
-def get_sde_loss_fn(sde, model, train, reduce_mean=True, continuous=True, likelihood_weighting=True, eps=1e-5):
+def get_sde_loss_fn(sde, model, train, reduce_mean=True, continuous=True, likelihood_weighting=True, eps=1e-5,
+                    classification=False):
   """Create a loss function for training with arbirary SDEs.
 
   Args:
@@ -106,7 +108,44 @@ def get_sde_loss_fn(sde, model, train, reduce_mean=True, continuous=True, likeli
     loss = jnp.mean(losses)
     return loss, new_model_state
 
-  return loss_fn
+
+  def loss_fn_cls(rng, params, states, batch):
+    """Compute the loss function.
+
+    Args:
+      rng: A JAX random state.
+      params: A dictionary that contains trainable parameters of the score-based model.
+      states: A dictionary that contains mutable states of the score-based model.
+      batch: A mini-batch of training data.
+
+    Returns:
+      loss: A scalar that represents the average loss value across the mini-batch.
+      new_model_state: A dictionary that contains the mutated states of the score-based model.
+    """
+
+    data = batch['image']
+    label = batch['label']
+
+    rng, step_rng = random.split(rng)
+    t = random.uniform(step_rng, (data.shape[0],), minval=eps, maxval=sde.T)
+    rng, step_rng = random.split(rng)
+    z = random.normal(step_rng, data.shape)
+    mean, std = sde.marginal_prob(data, t)
+    perturbed_data = mean + batch_mul(std, z)
+    logits, new_states = model.apply({'params': params}, perturbed_data, t, train=train, mutable=list(states.keys()))
+
+    losses = sigmoid_binary_cross_entropy(jnp.squeeze(logits), label)
+
+    if not likelihood_weighting:
+      losses = reduce_op(losses.reshape((losses.shape[0], -1)), axis=-1)
+    else:
+      g2 = sde.sde(jnp.zeros_like(data), t)[1] ** 2
+      losses = reduce_op(losses.reshape((losses.shape[0], -1)), axis=-1) * g2
+
+    loss = jnp.mean(losses)
+    return loss, new_states
+
+  return loss_fn if not classification else loss_fn_cls
 
 
 def get_smld_loss_fn(vesde, model, train, reduce_mean=False):
@@ -164,7 +203,7 @@ def get_ddpm_loss_fn(vpsde, model, train, reduce_mean=True):
   return loss_fn
 
 
-def get_step_fn(sde, model, train, reduce_mean=False, continuous=True, likelihood_weighting=False):
+def get_step_fn(sde, model, train, reduce_mean=False, continuous=True, likelihood_weighting=False, classification=False):
   """Create a one-step training/evaluation function.
 
   Args:
@@ -181,7 +220,8 @@ def get_step_fn(sde, model, train, reduce_mean=False, continuous=True, likelihoo
   """
   if continuous:
     loss_fn = get_sde_loss_fn(sde, model, train, reduce_mean=reduce_mean,
-                              continuous=True, likelihood_weighting=likelihood_weighting)
+                              continuous=True, likelihood_weighting=likelihood_weighting,
+                              classification=classification)
   else:
     assert not likelihood_weighting, "Likelihood weighting is not supported for original SMLD/DDPM training."
     if isinstance(sde, VESDE):
@@ -211,31 +251,12 @@ def get_step_fn(sde, model, train, reduce_mean=False, continuous=True, likelihoo
     grad_fn = jax.value_and_grad(loss_fn, argnums=1, has_aux=True)
     
     if train:
-      """
-      params = state.optimizer.target
-      states = state.model_state
-      (loss, new_model_state), grad = grad_fn(step_rng, params, states, batch)
-      grad = jax.lax.pmean(grad, axis_name='batch')
-      new_optimizer = optimize_fn(state, grad)
-      new_params_ema = jax.tree_multimap(
-        lambda p_ema, p: p_ema * state.ema_rate + p * (1. - state.ema_rate),
-        state.params_ema, new_optimizer.target
-      )
-      step = state.step + 1
-      new_state = state.replace(
-        step=step,
-        optimizer=new_optimizer,
-        model_state=new_model_state,
-        params_ema=new_params_ema
-      )
-      """
       params = state.params
       mutable = state.mutable_state
       (loss, new_mutable), grad = grad_fn(step_rng, params, mutable, batch)
 
       grad = jax.lax.pmean(grad, axis_name='batch')
-      new_state = state.apply_gradients(grads=grad)
-      new_state = new_state.replace(mutable_state=new_mutable)
+      new_state = state.apply_gradients(grads=grad, mutable_state=new_mutable, rng=rng)
     
     else:
       loss, _ = loss_fn(step_rng, state.params, state.mutable_state, batch)

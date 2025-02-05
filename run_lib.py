@@ -36,7 +36,7 @@ import functools
 from flax.metrics import tensorboard
 from flax.training import checkpoints
 # Keep the import below for registering all model definitions
-from models import ddpm, ncsnv2, ncsnpp, super_simple, super_simple_conv
+from models import ddpm, ncsnv2, ncsnpp, super_simple, super_simple_conv, classifier
 import losses
 import sampling
 import utils
@@ -50,7 +50,7 @@ from absl import flags
 FLAGS = flags.FLAGS
 
 
-def train(config, workdir):
+def train(config, workdir, classification=False):
   """Runs the training pipeline.
 
   Args:
@@ -125,17 +125,17 @@ def train(config, workdir):
   likelihood_weighting = config.training.likelihood_weighting
   train_step_fn = losses.get_step_fn(sde, score_model, train=True,
                                      reduce_mean=reduce_mean, continuous=continuous,
-                                     likelihood_weighting=likelihood_weighting)
+                                     likelihood_weighting=likelihood_weighting, classification=classification)
   # Pmap (and jit-compile) multiple training steps together for faster running
   p_train_step = jax.pmap(functools.partial(jax.lax.scan, train_step_fn), axis_name='batch', donate_argnums=1)
   eval_step_fn = losses.get_step_fn(sde, score_model, train=False,
                                     reduce_mean=reduce_mean, continuous=continuous,
-                                    likelihood_weighting=likelihood_weighting)
+                                    likelihood_weighting=likelihood_weighting, classification=classification)
   # Pmap (and jit-compile) multiple evaluation steps together for faster running
   p_eval_step = jax.pmap(functools.partial(jax.lax.scan, eval_step_fn), axis_name='batch', donate_argnums=1)
 
   # Building sampling functions
-  if config.training.snapshot_sampling:
+  if config.training.snapshot_sampling and not classification:
     sampling_shape = (config.training.batch_size // jax.local_device_count(), config.data.image_size,
                       config.data.image_size, config.data.num_channels)
     sampling_fn = sampling.get_sampling_fn(config, sde, score_model, sampling_shape, inverse_scaler, sampling_eps)
@@ -204,7 +204,7 @@ def train(config, workdir):
                                     keep=np.inf)
 
       # Generate and save samples
-      if config.training.snapshot_sampling:
+      if config.training.snapshot_sampling and not classification:
         rng, *sample_rng = jax.random.split(rng, jax.local_device_count() + 1)
         sample_rng = jnp.asarray(sample_rng)
         sample, n = sampling_fn(sample_rng, pstate)

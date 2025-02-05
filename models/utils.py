@@ -262,7 +262,7 @@ def create_classifier(prng_key, batch_size, ckpt_path):
   return classifier, classifier_params
 
 
-def get_logit_fn(classifier, classifier_params, preprocess_fn=None):
+def get_logit_fn(classifier, classifier_params, train=False):
   """ Create a logit function for the classifier. """
 
   def preprocess(data):
@@ -270,7 +270,7 @@ def get_logit_fn(classifier, classifier_params, preprocess_fn=None):
     image_std = jnp.asarray([[[0.24703223, 0.24348513, 0.26158784]]])
     return (data - image_mean[None, ...]) / image_std[None, ...]
   
-  preprocess_fn = preprocess if preprocess_fn is None else preprocess_fn
+  preprocess = lambda x: x # TODO : change all of this
 
   def logit_fn(data, ve_noise_scale):
     """Give the logits of the classifier.
@@ -283,7 +283,7 @@ def get_logit_fn(classifier, classifier_params, preprocess_fn=None):
       logits: The logits given by the noise-conditional classifier.
     """
     data = preprocess(data)
-    logits = classifier.apply({'params': classifier_params}, data, ve_noise_scale, train=False, mutable=False)
+    logits = classifier.apply({'params': classifier_params}, data, ve_noise_scale, train=train, mutable=False)
     return logits
 
   return logit_fn
